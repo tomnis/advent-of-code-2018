@@ -63,6 +63,54 @@ class Day17Spec extends FlatSpec with Matchers {
     0 <= row && row < board.length && 0 <= col && col < board(row).length
   }
 
+  /**
+    *
+    * @param board
+    * @param row
+    * @param col
+    * @return true iff (row, col) should be changed to still water
+    */
+  def isInReservoir(board: Board, row: Int, col: Int): Boolean = {
+    require(board(row)(col) == sand || board(row)(col) == flowingWater || board(row)(col) == stillWater)
+    if (!isInBounds(board, row + 1, col)) {
+      false
+    }
+    else if (board(row)(col) == stillWater) {
+      true
+    }
+    else {
+      // check below
+//      val below: Char = board(row + 1)(col)
+      // below must be clay or still water
+
+      // need to check left
+      val left: Boolean = {
+        var lCol: Int = col
+        while (isInBounds(board, row, lCol) && board(row)(lCol) != clay && (board(row + 1)(lCol) == clay || board(row + 1)(lCol) == stillWater)){
+          lCol -= 1
+        }
+        val cur = board(row)(lCol)
+        val down = board(row + 1)(lCol)
+        cur == clay && (down == clay || down == stillWater)
+      }
+
+      // check right
+      val right: Boolean = {
+        var rCol: Int = col
+        while (isInBounds(board, row, rCol) && board(row)(rCol) != clay && (board(row + 1)(rCol) == clay || board(row + 1)(rCol) == stillWater)) {
+          rCol += 1
+        }
+        val cur = board(row)(rCol)
+        val down = board(row + 1)(rCol)
+        cur == clay && (down == clay || down == stillWater)
+      }
+
+      //
+      left && right
+    }
+  }
+
+
   def releaseWater(board: Board): Board = {
     val sources: Seq[(Int, Int)] = for {
       row <- board.indices
@@ -85,35 +133,45 @@ class Day17Spec extends FlatSpec with Matchers {
         if (!discovered.contains(v)) { //} && row.until(board.length).forall(!discovered.contains(_, col))) {
           discovered += v
           oldScore = score(board)
-          if (board(row)(col) != spring) {
-            if (row < board.length - 1 && (board(row + 1)(col) == clay || board(row + 1)(col) == stillWater))
-              board(row)(col) = stillWater
-            else
+          if (board(row)(col) != spring) { // } !discovered.contains(row + 1, col) &&)) {
+//            if (row < board.length - 1 && (board(row + 1)(col) == clay || board(row + 1)(col) == stillWater)) // && isInReservoir(board, row, col))
+//              board(row)(col) = stillWater
+//            else {
               board(row)(col) = flowingWater
+//            }
           }
+          s = v :: s
           // add outgoing edges
           val left = (row, col - 1)
           val right = (row, col + 1)
           val down = (row + 1, col)
 
-          if (isInBounds(board, right._1, right._2) && board(right._1)(right._2) == sand) {
-            if (right._1 == board.length - 1 || (right._1 + 1 until board.length).forall(discovered.contains(_, right._2)))
-              discovered += right
-            else
+          if (isInBounds(board, right._1, right._2) && board(right._1)(right._2) == sand && right._1 < board.length -1) {
               s = right :: s
           }
-          if (isInBounds(board, left._1, left._2) && board(left._1)(left._2) == sand) {
-            if (left._1 == board.length -1 || (left._1 + 1 until board.length).forall(discovered.contains(_, left._2)))
-              discovered += left
-            else
+          else {
+            discovered += right
+          }
+          if (isInBounds(board, left._1, left._2) && board(left._1)(left._2) == sand && left._1 < board.length - 1) {
               s = left :: s
           }
-          if (isInBounds(board, down._1, down._2) && board(down._1)(down._2) == sand) s = down :: s
+          else {
+            discovered += left
+          }
+          if (isInBounds(board, down._1, down._2) && board(down._1)(down._2) == sand && down._1 < board.length) {
+            s = down :: s
+          }
+          else {
+            discovered += down
+          }
         }
         // we have visited this node before, so just check to see if we need to update its flowing state
         else {
           println(s"already visited ($row, $col)")
 
+          if (isInReservoir(board, row, col) && board(row)(col) == flowingWater) {
+            board(row)(col) = stillWater
+          }
         }
       }
     }
@@ -141,7 +199,7 @@ class Day17Spec extends FlatSpec with Matchers {
     } {
       print(board(row)(col))
       if (col == board(row).length - 1) {
-        println(s"")
+        println(s"  $row")
       }
     }
     println()
