@@ -1,4 +1,4 @@
-package org.mccandless.minotaur
+package org.mccandless.advent
 
 import org.scalatest.{FlatSpec, Matchers}
 
@@ -113,8 +113,14 @@ sealed trait Op {
 
 object Op {
   def apply(instruction: Seq[Int]): Op = {
-    val c: Class[_] = Class.forName(s"org.mccandless.minotaur.${knownOpcodes(instruction.head)}")
+    val c: Class[_] = Class.forName(s"org.mccandless.advent.${knownOpcodes(instruction.head)}")
     c.getConstructor(classOf[Int], classOf[Int], classOf[Int]).newInstance(new java.lang.Integer(instruction(1)), new java.lang.Integer(instruction(2)), new java.lang.Integer(instruction(3))).asInstanceOf[Op]
+  }
+
+  // for day 19
+  def apply(instruction: String, args: Tuple3[Int, Int, Int]): Op = {
+    val c: Class[_] = Class.forName(s"org.mccandless.advent.$instruction")
+    c.getConstructor(classOf[Int], classOf[Int], classOf[Int]).newInstance(new java.lang.Integer(args._1), new java.lang.Integer(args._2), new java.lang.Integer(args._3)).asInstanceOf[Op]
   }
 }
 
