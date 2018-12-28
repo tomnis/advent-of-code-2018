@@ -1,9 +1,10 @@
-package org.mccandless.minotaur
+package org.mccandless.advent
 
 import org.scalatest.{FlatSpec, Matchers}
 
 import scala.collection.mutable
 
+// TODO ugly code
 class Day17Spec extends FlatSpec with Matchers {
 
   type Board = mutable.Seq[mutable.Seq[Char]]
@@ -13,8 +14,10 @@ class Day17Spec extends FlatSpec with Matchers {
   val spring: Char = '+'
   val flowingWater: Char = '|'
   val stillWater: Char = '~'
+  val solidSquares: Set[Char] = Set(clay, stillWater)
+  val permeableSquares: Set[Char] = Set(sand, flowingWater)
 
-  def parseRow(clays: Seq[Clay], y: Int, minX: Int, maxX: Int): mutable.Seq[Char] = {
+  def parseRow(clays: Set[Clay], y: Int, minX: Int, maxX: Int): mutable.Seq[Char] = {
     var row: mutable.Seq[Char] = mutable.ListBuffer.empty
     for {
       x <- minX to maxX
@@ -39,77 +42,32 @@ class Day17Spec extends FlatSpec with Matchers {
 
   def parseInput(filename: String): Board = {
     val lines: Seq[String] = io.Source.fromResource(filename).getLines.toSeq
-    val veins: Seq[Clay] = lines.map { l: String =>
+    val veins: Set[Clay] = lines.map { l: String =>
       val components: Seq[String] = l.split(", ").toSeq
       val x: Seq[Int] = if (components.head.startsWith("x")) Seq(parseSingle(components.head)) else parseRange(components.tail.head)
       val y: Seq[Int] = if (components.head.startsWith("y")) Seq(parseSingle(components.head)) else parseRange(components.tail.head)
       Clay(x, y)
-    }
+    }.toSet
 
-    val minX: Int = veins.map(_.x.head).min
-    val maxX: Int = veins.map(_.x.head).max
-    val minY: Int = veins.map(_.y.head).min
-    val maxY: Int = veins.map(_.y.head).max
+    val minX: Int = veins.map(_.x.min).min
+    val maxX: Int = veins.map(_.x.max).max
+    val minY: Int = 0 // veins.map(_.y.min).min
+    val maxY: Int = veins.map(_.y.max).max
 
-    var board: Board = mutable.ListBuffer.empty
+    println(s"min y in input: ${veins.map(_.y.min).min}")
+    var board: Board = new mutable.ArrayBuffer[mutable.Seq[Char]](maxY)
+
     for {
-      row <- minY - 4 to maxY
-    } board = board :+ parseRow(veins, row, minX - 5, maxX + 5)
+      row <- minY to maxY
+    } board = board :+ parseRow(veins, row, minX - 10, maxX + 10)
     board
   }
 
 
+  def isInBounds(board: Board, square: Square): Boolean = isInBounds(board, square.row, square.col)
   def isInBounds(board: Board, row: Int, col: Int): Boolean = {
     0 <= row && row < board.length && 0 <= col && col < board(row).length
   }
-
-  /**
-    *
-    * @param board
-    * @param row
-    * @param col
-    * @return true iff (row, col) should be changed to still water
-    */
-  def isInReservoir(board: Board, row: Int, col: Int): Boolean = {
-    require(board(row)(col) == sand || board(row)(col) == flowingWater || board(row)(col) == stillWater)
-    if (!isInBounds(board, row + 1, col)) {
-      false
-    }
-    else if (board(row)(col) == stillWater) {
-      true
-    }
-    else {
-      // check below
-//      val below: Char = board(row + 1)(col)
-      // below must be clay or still water
-
-      // need to check left
-      val left: Boolean = {
-        var lCol: Int = col
-        while (isInBounds(board, row, lCol) && board(row)(lCol) != clay && (board(row + 1)(lCol) == clay || board(row + 1)(lCol) == stillWater)){
-          lCol -= 1
-        }
-        val cur = board(row)(lCol)
-        val down = board(row + 1)(lCol)
-        cur == clay && (down == clay || down == stillWater)
-      }
-
-      // check right
-      val right: Boolean = {
-        var rCol: Int = col
-        while (isInBounds(board, row, rCol) && board(row)(rCol) != clay && (board(row + 1)(rCol) == clay || board(row + 1)(rCol) == stillWater)) {
-          rCol += 1
-        }
-        val cur = board(row)(rCol)
-        val down = board(row + 1)(rCol)
-        cur == clay && (down == clay || down == stillWater)
-      }
-
-      //
-      left && right
-    }
-  }
-
 
   def releaseWater(board: Board): Board = {
     val sources: Seq[(Int, Int)] = for {
@@ -119,62 +77,69 @@ class Day17Spec extends FlatSpec with Matchers {
     } yield (row, col)
 
 
-    sources foreach { source =>
-      var s: List[(Int, Int)] = (source._1 + 1, source._2) :: Nil
-      var discovered: Set[(Int, Int)] = Set.empty
-      var oldScore: Int = 0
-      while(s.nonEmpty && score(board) != oldScore) {
-        val v = s.head
-        val (row, col) = v
-        s = s.tail
-        printState(board)
-        Thread.sleep(200)
+    val queue: mutable.Set[Square] = mutable.Set.empty
+    queue += Square(sources.head._1, sources.head._2)
+    // initiate a source
+    // maintain priority queue of sources (order by -y)
+    // loop until queue is empty
+    //   if cell down is sand
+    //     fill downward until not sand
+    //     add original source back to queue
+    //   elif next cell down is clay or still water
+    //     look left and right for "end" of the row
+    //     if both ends are solid, fill intermediate cells with still water
+    //       otherwise fill intermediate cells with flowing water
+    //     free ends add to queue as sources
+    //   elif next cell down is flowing water, or at bottom
+    //     mark cell as flowing water
+    while (queue.nonEmpty) {
+      val current = queue.maxBy(_.row)
+      queue -= current
 
-        if (!discovered.contains(v)) { //} && row.until(board.length).forall(!discovered.contains(_, col))) {
-          discovered += v
-          oldScore = score(board)
-          if (board(row)(col) != spring) { // } !discovered.contains(row + 1, col) &&)) {
-//            if (row < board.length - 1 && (board(row + 1)(col) == clay || board(row + 1)(col) == stillWater)) // && isInReservoir(board, row, col))
-//              board(row)(col) = stillWater
-//            else {
-              board(row)(col) = flowingWater
-//            }
-          }
-          s = v :: s
-          // add outgoing edges
-          val left = (row, col - 1)
-          val right = (row, col + 1)
-          val down = (row + 1, col)
-
-          if (isInBounds(board, right._1, right._2) && board(right._1)(right._2) == sand && right._1 < board.length -1) {
-              s = right :: s
-          }
-          else {
-            discovered += right
-          }
-          if (isInBounds(board, left._1, left._2) && board(left._1)(left._2) == sand && left._1 < board.length - 1) {
-              s = left :: s
-          }
-          else {
-            discovered += left
-          }
-          if (isInBounds(board, down._1, down._2) && board(down._1)(down._2) == sand && down._1 < board.length) {
-            s = down :: s
-          }
-          else {
-            discovered += down
+      if (isInBounds(board, current.row + 1, current.col) && board(current.row + 1)(current.col) == sand) {
+        // fill downward until not sand
+        var (row, col) = (current.row + 1, current.col)
+        while (isInBounds(board, row, col) && permeableSquares.contains(board(row)(col))) {
+          board(row)(col) = flowingWater
+          queue += Square(row, col)
+          row += 1
+        }
+        if (row != current.row + 1 && row < board.length) {
+          queue += current
+        }
+      }
+      else if (isInBounds(board, current.row + 1, current.col) && (board(current.row + 1)(current.col) == clay || board(current.row + 1)(current.col) == stillWater)) {
+        // find left and right ends of the row
+        var left: Int = current.col
+        while (isInBounds(board, current.row, left) && (board(current.row + 1)(left) == stillWater || board(current.row + 1)(left) == clay) && board(current.row)(left) != clay) {
+          left -= 1
+        }
+        var right: Int = current.col
+        while (isInBounds(board, current.row, right) && (board(current.row + 1)(right) == stillWater || board(current.row + 1)(right) == clay) && board(current.row)(right) != clay) {
+          right += 1
+        }
+        if (solidSquares.contains(board(current.row)(left)) && solidSquares.contains(board(current.row)(right))) {
+          for (i <- left + 1 until right) {
+            board(current.row)(i) = stillWater
           }
         }
-        // we have visited this node before, so just check to see if we need to update its flowing state
         else {
-          println(s"already visited ($row, $col)")
-
-          if (isInReservoir(board, row, col) && board(row)(col) == flowingWater) {
-            board(row)(col) = stillWater
+          val leftBound = if (board(current.row)(left) == sand) left else left + 1
+          val rightBound = if (board(current.row)(right) == sand) right else right - 1
+          println(s"$leftBound, $rightBound")
+          if (board(current.row)(leftBound) == sand && current.row < board.length - 1 && leftBound != current.col) {
+            queue += Square(current.row, leftBound)
+          }
+          if (board(current.row)(rightBound) == sand && current.row < board.length - 1 && rightBound != current.col) {
+            queue += Square(current.row, rightBound)
+          }
+          for (i <- leftBound to rightBound) {
+            board(current.row)(i) = flowingWater
           }
         }
       }
     }
+
     board
   }
 
@@ -188,7 +153,7 @@ class Day17Spec extends FlatSpec with Matchers {
   def score(board: Board): Int = {
     val rowScores: Seq[Int] = for {
       row <- board.indices
-    } yield board(row).count(p => p == spring || p == flowingWater || p == stillWater)
+    } yield board(row).count(p => p == stillWater)
     rowScores.sum
   }
 
@@ -208,15 +173,16 @@ class Day17Spec extends FlatSpec with Matchers {
 
 
   "day 17" should "solve" in {
-    var board: Board = this.parseInput("day17_small.txt")
-
+    var board: Board = this.parseInput("day17.txt")
 
     board = releaseWater(board)
-    //    print(score(board))
-    //    printState(board)
+
+    printState(board)
+    println(score(board))
   }
 }
 
+case class Square(row: Int, col: Int)
 
 case class Clay(x: Seq[Int], y: Seq[Int]) {
   require(x.length == 1 || y.length == 1)
